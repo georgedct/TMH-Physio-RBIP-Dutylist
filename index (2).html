@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>治療師工作量 & PCA 分配系統</title>
+<!-- SheetJS for Excel export -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- Firebase SDK (compat for simpler usage in plain HTML) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --blue:#3b82f6;--blue-dark:#1e3a5f;--blue-light:#dbeafe;--blue-bg:#e0ecff;
+  --green:#10b981;--green-dark:#059669;--green-bg:#ecfdf5;--green-border:#a7f3d0;
+  --red:#ef4444;--red-dark:#dc2626;--red-bg:#fef2f2;--red-border:#fca5a5;
+  --yellow-bg:#fef9c3;--yellow-border:#fde68a;--amber-bg:#fef3c7;--amber-border:#fcd34d;--amber-dark:#92400e;
+  --slate:#64748b;--slate-light:#94a3b8;--border:#dde5f0;--bg:#f0f4f8;
+  --section-shadow:0 1px 6px rgba(0,0,0,.08);
+}
+body{font-family:'Segoe UI','Noto Sans TC','Microsoft JhengHei',sans-serif;background:var(--bg);padding:12px;color:#1e293b;font-size:12px;line-height:1.4}
+.section{background:#fff;border-radius:10px;box-shadow:var(--section-shadow);margin-bottom:16px;padding:14px;overflow:auto}
+h2.sec-title{font-size:15px;font-weight:700;color:var(--blue-dark);margin-bottom:10px;border-bottom:2px solid var(--blue);padding-bottom:4px}
+h3.sub-title{font-size:13px;font-weight:600;color:#475569;margin-bottom:6px}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{background:var(--blue-bg);padding:5px 6px;border:1px solid #c7d8f0;font-weight:600;font-size:10px;text-align:center;white-space:nowrap}
+td{padding:4px 5px;border:1px solid var(--border);text-align:center;vertical-align:top}
+input,textarea,select{font-family:inherit;font-size:11px}
+input[type=text],input[type=number],textarea{width:100%;padding:3px 4px;border:1px solid #cbd5e1;border-radius:4px}
+input[type=number]{text-align:center}
+input.sm-num{width:55px;text-align:center;padding:2px 3px}
+select{padding:2px 4px;border-radius:3px;border:1px solid #cbd5e1;font-size:10px}
+textarea{resize:vertical;min-height:50px}
+.btn{padding:4px 10px;border-radius:5px;border:none;cursor:pointer;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:3px;transition:background .15s}
+.btn-primary{background:var(--blue);color:#fff}.btn-primary:hover{background:#2563eb}
+.btn-danger{background:var(--red);color:#fff}.btn-danger:hover{background:#dc2626}
+.btn-success{background:var(--green);color:#fff}.btn-success:hover{background:#059669}
+.btn-outline{background:#fff;color:var(--blue);border:1.5px solid var(--blue)}.btn-outline:hover{background:var(--blue-light)}
+.btn-sm{padding:2px 6px;font-size:10px}
+.stat{background:#f0f9ff;border-radius:6px;padding:6px 10px;display:inline-block;margin:3px 4px;font-size:12px;font-weight:600;color:#0369a1}
+.slot-cb-group{display:flex;gap:2px;flex-wrap:wrap;justify-content:center}
+.slot-cb-group label{font-size:9px;display:flex;align-items:center;gap:1px;white-space:nowrap;cursor:pointer}
+.slot-cb-group input[type=checkbox]{width:12px;height:12px;margin:0}
+.chip{display:inline-flex;align-items:center;padding:2px 8px;margin:1px;border-radius:12px;font-size:11px;font-weight:600;cursor:grab;white-space:nowrap;user-select:none;transition:opacity .15s}
+.chip.resident{background:var(--blue-light);color:#1e40af;border:1px solid #93c5fd}
+.chip.non-resident{background:var(--amber-bg);color:var(--amber-dark);border:1px solid var(--amber-border)}
+.chip.dragging{opacity:.35}
+.chip.small{padding:1px 6px;font-size:10px}
+.drop-zone{min-height:36px;border:2px dashed #cbd5e1;border-radius:6px;padding:3px;background:#fafbfc;transition:background .2s,border-color .2s}
+.drop-zone.drag-over{background:var(--blue-light);border-color:var(--blue)}
+.drop-zone .placeholder{font-size:9px;color:var(--slate-light)}
+.pool{margin-top:10px;background:var(--red-bg);border-radius:8px;padding:8px 12px;border:1px dashed var(--red-border)}
+.pool-title{font-size:13px;font-weight:600;color:var(--red-dark);margin-bottom:4px}
+.pool-chips{display:flex;flex-wrap:wrap;gap:3px;min-height:24px}
+.adjust-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.adjust-row label{font-size:11px;display:flex;align-items:center;gap:3px}
+.adjust-row input{width:50px;padding:2px 3px;text-align:center}
+.team-pca-row{display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:6px}
+.team-pca-item{background:#f0f9ff;border-radius:6px;padding:4px 8px;border:1px solid #bfdbfe;font-size:11px}
+.team-pca-item b{margin-right:3px}
+.bed-suggest{margin-top:10px;background:#f0fdf4;border-radius:6px;padding:8px 12px;border:1px solid var(--green-border)}
+.bed-suggest p{margin:2px 0;font-size:11px;line-height:1.6}
+.crp-box{margin-top:10px;background:var(--yellow-bg);border-radius:6px;padding:6px 10px;border:1px solid var(--yellow-border);font-size:11px}
+.nr-pca-list{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.nr-pca-card{background:#fffbeb;border-radius:6px;padding:3px 6px;border:1px solid var(--amber-border);font-size:10px}
+.pca-row-resident{background:#f0f9ff}
+.pca-row-nonresident{background:#fffbeb}
+.overflow-wrap{overflow-x:auto}
+.header-input{font-weight:700;text-align:center;background:var(--blue-bg);border:none;font-size:11px;width:100%;padding:3px}
+.manual-input{margin-top:2px;font-size:9px;padding:1px 3px;width:100%}
+.footer{text-align:center;padding:8px 0 20px;font-size:10px;color:var(--slate-light)}
+.save-indicator{font-size:10px;margin-left:8px;transition:opacity .3s}
+
+/* Date bar */
+#date-bar{background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 100%);border-radius:12px;padding:14px 20px;margin-bottom:16px;color:#fff;box-shadow:0 3px 12px rgba(30,58,95,.25)}
+#date-bar h1{font-size:18px;font-weight:800;margin-bottom:8px;letter-spacing:.3px}
+.date-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.date-nav button{background:rgba(255,255,255,.15);color:#fff;border:1.5px solid rgba(255,255,255,.3);padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+.date-nav button:hover{background:rgba(255,255,255,.3)}
+.date-nav button.active{background:#fff;color:var(--blue-dark)}
+#date-input{padding:5px 10px;border-radius:6px;border:none;font-size:13px;font-weight:700;color:var(--blue-dark);cursor:pointer;width:160px;text-align:center}
+.date-info{display:flex;gap:12px;margin-top:8px;flex-wrap:wrap;align-items:center;font-size:11px}
+.date-badge{padding:3px 10px;border-radius:12px;font-size:10px;font-weight:600}
+.date-badge.has-data{background:#34d399;color:#064e3b}
+.date-badge.no-data{background:rgba(255,255,255,.2);color:rgba(255,255,255,.8)}
+.conn-badge{padding:3px 10px;border-radius:12px;font-size:10px;font-weight:600}
+.conn-badge.online{background:#34d399;color:#064e3b}
+.conn-badge.offline{background:#f87171;color:#fff}
+.conn-badge.syncing{background:#fbbf24;color:#78350f}
+.mini-cal{display:flex;gap:2px;flex-wrap:wrap;max-width:280px}
+.mini-cal .day-dot{width:18px;height:18px;border-radius:4px;font-size:8px;display:flex;align-items:center;justify-content:center;font-weight:600;cursor:pointer;transition:all .12s}
+.mini-cal .day-dot.has{background:#34d399;color:#064e3b}
+.mini-cal .day-dot.empty{background:rgba(255,255,255,.1);color:rgba(255,255,255,.5)}
+.mini-cal .day-dot.today{box-shadow:0 0 0 2px #fbbf24}
+.mini-cal .day-dot.selected{box-shadow:0 0 0 2px #fff}
+.mini-cal .day-dot:hover{transform:scale(1.2)}
+.modal-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:1000;justify-content:center;align-items:center}
+.modal-overlay.show{display:flex}
+.modal-box{background:#fff;border-radius:12px;padding:24px;max-width:400px;width:90%;box-shadow:0 10px 40px rgba(0,0,0,.2)}
+.modal-box h3{font-size:16px;margin-bottom:12px;color:var(--blue-dark)}
+.modal-box p{font-size:12px;color:var(--slate);margin-bottom:12px}
+.modal-box input[type=date]{padding:8px;border-radius:6px;border:1px solid #cbd5e1;font-size:13px;width:100%;margin-bottom:12px}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end}
+</style>
+</head>
+<body>
+
+<!-- DATE BAR -->
+<div id="date-bar">
+  <h1>🏥 治療師工作量 & PCA 分配系統</h1>
+  <div class="date-nav">
+    <button onclick="changeDate(-1)">◀ 前一日</button>
+    <input type="date" id="date-input" onchange="goToDate(this.value)">
+    <button onclick="changeDate(1)">後一日 ▶</button>
+    <button onclick="goToToday()" class="active">📅 今日</button>
+    <div style="width:1px;height:24px;background:rgba(255,255,255,.2)"></div>
+    <button onclick="showCopyModal()">📋 複製紀錄</button>
+    <button onclick="deleteCurrentRecord()" style="background:rgba(239,68,68,.3);border-color:rgba(239,68,68,.5)">🗑️ 刪除</button>
+    <div style="width:1px;height:24px;background:rgba(255,255,255,.2)"></div>
+    <button onclick="exportMonthExcel()" style="background:rgba(16,185,129,.3);border-color:rgba(16,185,129,.5)">📊 匯出本月 Excel</button>
+  </div>
+  <div class="date-info">
+    <span id="date-display" style="font-size:14px;font-weight:700"></span>
+    <span id="date-status" class="date-badge no-data">新紀錄</span>
+    <span id="conn-status" class="conn-badge syncing">⏳ 連接中...</span>
+    <span id="save-ind" class="save-indicator" style="opacity:0">✓ 已儲存</span>
+  </div>
+  <div style="margin-top:8px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+      <button onclick="calMonth(-1)" style="background:none;border:none;color:#fff;cursor:pointer;font-size:12px">◀</button>
+      <span id="cal-month-label" style="font-size:11px;font-weight:600;min-width:90px;text-align:center"></span>
+      <button onclick="calMonth(1)" style="background:none;border:none;color:#fff;cursor:pointer;font-size:12px">▶</button>
+      <span style="font-size:9px;opacity:.6;margin-left:4px">● = 有紀錄</span>
+    </div>
+    <div class="mini-cal" id="mini-cal"></div>
+  </div>
+</div>
+
+<!-- Copy Modal -->
+<div class="modal-overlay" id="copy-modal">
+  <div class="modal-box">
+    <h3>📋 複製紀錄</h3>
+    <p>選擇一個日期，將該日的紀錄複製到目前選取的日期。目前日期的紀錄將被覆蓋。</p>
+    <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">來源日期：</label>
+    <input type="date" id="copy-source-date">
+    <div id="copy-source-info" style="font-size:10px;color:var(--slate);margin-bottom:12px"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeCopyModal()">取消</button>
+      <button class="btn btn-primary" onclick="doCopy()">確認複製</button>
+    </div>
+  </div>
+</div>
+
+<!-- TABLE 1 -->
+<div class="section">
+  <h2 class="sec-title">📋 表格一：Team 設定 (Team Configuration)</h2>
+  <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
+    <span class="stat" id="stat-total-beds">病床總數: 0</span>
+    <span class="stat" id="stat-total-units">治療師總當值單位: 0</span>
+    <span class="stat" id="stat-avg-beds">人均病床數量: 0</span>
+    <button class="btn btn-primary" onclick="addTeam()">+ 新增 Team</button>
+  </div>
+  <div class="overflow-wrap"><table id="table1"><thead><tr id="t1-header"></tr></thead><tbody id="t1-body"></tbody></table></div>
+</div>
+
+<!-- TABLE 2 -->
+<div class="section">
+  <h2 class="sec-title">👥 表格二：PCA 助理設定 (PCA Configuration)</h2>
+  <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
+    <span class="stat" id="stat-pca-count">PCA 人數: 0</span>
+    <span class="stat" id="stat-pca-units">PCA 總當值單位: 0</span>
+    <button class="btn btn-primary" onclick="addPCA()">+ 新增 PCA</button>
+  </div>
+  <div id="adj-box" style="background:#f8fafc;border-radius:8px;padding:8px 12px;margin-bottom:10px;border:1px solid #e2e8f0">
+    <p id="adj-formula" style="font-size:10px;color:var(--slate);margin-bottom:4px"></p>
+    <div class="adjust-row">
+      <label>Robotics: <input type="number" step="0.05" id="adj-robotics" value="1" onchange="onAdjChange()"></label>
+      <label>CRP: <input type="number" step="0.05" id="adj-crp" value="0.25" onchange="onAdjChange()"></label>
+      <label>DRO: <input type="number" step="0.05" id="adj-dro" value="0.4" onchange="onAdjChange()"></label>
+      <label>SL & VL: <input type="number" step="0.05" id="adj-slvl" value="0" onchange="onAdjChange()"></label>
+      <label>Buffer (+): <input type="number" step="0.05" id="adj-buffer" value="0" onchange="onAdjChange()"></label>
+    </div>
+  </div>
+  <div class="overflow-wrap"><table id="table2"><thead><tr><th>#</th><th>PCA 名字</th><th>當值時段</th><th>類型</th><th>常駐 Team</th><th>Remarks</th><th>操作</th></tr></thead><tbody id="t2-body"></tbody></table></div>
+  <div style="margin-top:10px">
+    <h3 class="sub-title">各 Team 所得 PCA 總當值單位</h3>
+    <div class="team-pca-row" id="team-pca-row"></div>
+  </div>
+</div>
+
+<!-- TABLE 3 -->
+<div class="section">
+  <h2 class="sec-title">📊 表格三：各 Team 剩餘 PCA 當值單位</h2>
+  <div class="overflow-wrap"><table id="table3"><thead><tr id="t3-header"></tr></thead><tbody id="t3-body"></tbody></table></div>
+  <div class="crp-box">
+    <span style="font-weight:600">特別常駐 PCA (CRP)：</span>
+    <select id="crp-team" onchange="onCRPChange()"></select>
+    <select id="crp-slot" onchange="onCRPChange()"><option value="0">09:00-10:30</option><option value="1">10:30-12:00</option></select>
+    <span style="font-size:9px;color:var(--amber-dark);margin-left:6px">(僅供資訊，不影響系統計算)</span>
+  </div>
+  <div style="margin-top:10px">
+    <h3 class="sub-title">非常駐 PCA 當值時段</h3>
+    <div class="nr-pca-list" id="nr-pca-list"></div>
+  </div>
+</div>
+
+<!-- TABLE 4 -->
+<div class="section">
+  <h2 class="sec-title">🎯 表格四：PCA 分配表 (PCA Allocation) — 拖放式</h2>
+  <div style="display:flex;gap:6px;margin-bottom:8px">
+    <button class="btn btn-primary" onclick="doAllocate()">🔄 重新自動分配</button>
+    <button class="btn btn-danger btn-sm" onclick="resetRemainingOverrides()">重置剩餘覆寫</button>
+  </div>
+  <div class="overflow-wrap"><table id="table4"><thead><tr id="t4-header"></tr></thead><tbody id="t4-body"></tbody></table></div>
+  <div class="pool" id="unassigned-pool" ondragover="event.preventDefault()" ondrop="dropToPool(event)">
+    <div class="pool-title" id="pool-title">未分配 PCA 時段池 (0 個時段)</div>
+    <div class="pool-chips" id="pool-chips"></div>
+  </div>
+</div>
+
+<!-- TABLE 5 -->
+<div class="section">
+  <h2 class="sec-title">🛏️ 表格五：病床分配輸出 (Bed Allocation Output)</h2>
+  <span class="stat" id="stat-avg-beds2">人均病床數量: 0</span>
+  <div class="overflow-wrap" style="margin-top:8px"><table id="table5"><thead><tr id="t5-header"></tr></thead><tbody id="t5-body"></tbody></table></div>
+  <div class="bed-suggest" id="bed-suggest"></div>
+</div>
+
+<!-- Bottom Remarks -->
+<div class="section">
+  <h2 class="sec-title">📝 當日備注 (Daily Remarks)</h2>
+  <textarea id="bottom-remarks" style="width:100%;min-height:100px;padding:10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;line-height:1.5" placeholder="例如：加班治療師及 PCA 名字、特別事項..." onchange="schedSave()"></textarea>
+</div>
+
+<div class="footer">治療師工作量 & PCA 分配系統 v3.0 | ☁️ Firebase 雲端同步 · 按日期儲存 · Excel 匯出</div>
+
+<script>
+// ==================== FIREBASE INIT ====================
+const firebaseConfig = {
+  apiKey: "AIzaSyDClJnFMd-QAJctJ3b3i5SmYkTk0rhU6k0",
+  authDomain: "tmh-physio-rbip-dutylist-aafa3.firebaseapp.com",
+  projectId: "tmh-physio-rbip-dutylist-aafa3",
+  storageBucket: "tmh-physio-rbip-dutylist-aafa3.firebasestorage.app",
+  messagingSenderId: "328341057452",
+  appId: "1:328341057452:web:ba52d6d7208e84a7e7d409",
+  measurementId: "G-M3Y7EBS2WM"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+// Enable offline persistence so it works without internet too
+db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+  console.log('Firestore persistence error:', err.code);
+});
+let firestoreReady = false;
+
+function setConnStatus(status) {
+  const el = document.getElementById('conn-status');
+  if (status === 'online')  { el.textContent = '☁️ 雲端已連接'; el.className = 'conn-badge online'; }
+  else if (status === 'offline') { el.textContent = '📴 離線模式'; el.className = 'conn-badge offline'; }
+  else if (status === 'syncing') { el.textContent = '⏳ 同步中...'; el.className = 'conn-badge syncing'; }
+  else if (status === 'saved')  { el.textContent = '☁️ 已同步'; el.className = 'conn-badge online'; }
+  else if (status === 'error')  { el.textContent = '⚠️ 同步失敗'; el.className = 'conn-badge offline'; }
+}
+
+// ==================== CONSTANTS ====================
+const TIME_SLOTS = ["09:00-10:30","10:30-12:00","13:30-15:00","15:00-16:30"];
+const SLOT_UNIT = 0.25;
+const WEEKDAYS = ['日','一','二','三','四','五','六'];
+const LS_PREFIX = 'pca-day-';
+const LS_INDEX = 'pca-dates-index';
+
+// ==================== STATE ====================
+let currentDate = '';
+let calViewMonth = '';
+let teams=[],pcas=[],adj={},resUnits=[],crpConfig={};
+let overriddenPCA={},overriddenRemaining={};
+let manualGrid={},bedRemarks={};
+let draggingData=null, saveTimer=null;
+let dateIndexCache = []; // cached list of dates with records
+
+// ==================== DATE HELPERS ====================
+function todayStr(){ return new Date().toISOString().slice(0,10) }
+function fmtDateDisplay(ds){
+  const d = new Date(ds+'T00:00:00');
+  return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 (星期${WEEKDAYS[d.getDay()]})`;
+}
+function addDays(ds,n){ const d=new Date(ds+'T00:00:00'); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10) }
+function getMonthStr(ds){ return ds.slice(0,7) }
+function daysInMonth(ym){ const[y,m]=ym.split('-').map(Number); return new Date(y,m,0).getDate() }
+
+// ==================== DATE INDEX ====================
+// Dual: localStorage cache + Firestore truth
+function getDateIndex(){ return dateIndexCache }
+function hasRecord(ds){ return dateIndexCache.includes(ds) }
+
+async function refreshDateIndex(){
+  // Try Firestore first
+  try {
+    const snap = await db.collection('records').get();
+    dateIndexCache = snap.docs.map(d => d.id).sort();
+    localStorage.setItem(LS_INDEX, JSON.stringify(dateIndexCache));
+    return;
+  } catch(e) { console.log('Index from Firestore failed, using local', e); }
+  // Fallback to localStorage
+  try {
+    const raw = localStorage.getItem(LS_INDEX);
+    dateIndexCache = raw ? JSON.parse(raw) : [];
+  } catch(e) { dateIndexCache = []; }
+}
+
+async function refreshMonthIndex(ym) {
+  // Optimized: only query dates in this month range
+  try {
+    const startDate = ym + '-01';
+    const endParts = ym.split('-').map(Number);
+    const endDate = ym + '-' + String(daysInMonth(ym)).padStart(2,'0');
+    const snap = await db.collection('records')
+      .where(firebase.firestore.FieldPath.documentId(), '>=', startDate)
+      .where(firebase.firestore.FieldPath.documentId(), '<=', endDate + '\uf8ff')
+      .get();
+    const monthDates = snap.docs.map(d => d.id);
+    // Merge into cache
+    dateIndexCache = dateIndexCache.filter(d => !d.startsWith(ym));
+    dateIndexCache.push(...monthDates);
+    dateIndexCache.sort();
+    localStorage.setItem(LS_INDEX, JSON.stringify(dateIndexCache));
+  } catch(e) { /* keep existing cache */ }
+}
+
+function addToIndexCache(ds){
+  if (!dateIndexCache.includes(ds)) { dateIndexCache.push(ds); dateIndexCache.sort(); }
+  localStorage.setItem(LS_INDEX, JSON.stringify(dateIndexCache));
+}
+function removeFromIndexCache(ds){
+  dateIndexCache = dateIndexCache.filter(d => d !== ds);
+  localStorage.setItem(LS_INDEX, JSON.stringify(dateIndexCache));
+}
+
+// ==================== DEFAULTS ====================
+function initDefaults(){
+  teams=Array.from({length:8},(_,i)=>({
+    id:`team-${i}`,name:`Team ${String.fromCharCode(65+i)}`,
+    therapist:"",therapistUnits:1,beds:10,
+    pref1:[false,false,false,false],pref2:[false,false,false,false],remarks:""
+  }));
+  pcas=Array.from({length:14},(_,i)=>{
+    const isRes=i<8;
+    return{id:`pca-${i}`,name:`PCA ${i+1}`,slots:[true,true,true,true],isResident:isRes,residentTeam:isRes?`team-${i}`:"",remarks:""};
+  });
+  adj={robotics:1,crp:0.25,dro:0.4,slvl:0,buffer:0};
+  resUnits=Array.from({length:8},()=>({units:1,slots:[true,true,true,true]}));
+  crpConfig={team:"team-3",slot:0};
+  overriddenPCA={};overriddenRemaining={};
+  manualGrid={};bedRemarks={};
+  document.getElementById('bottom-remarks').value='';
+}
+
+// ==================== STORAGE: FIRESTORE + LOCAL BACKUP ====================
+function buildRecord(){
+  return {
+    teams, pcas, adj, resUnits, crpConfig,
+    overriddenPCA, overriddenRemaining,
+    manualGrid, bedRemarks,
+    bottomRemarks: document.getElementById('bottom-remarks').value,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function applyRecord(d){
+  if(d.teams) teams=d.teams;
+  if(d.pcas) pcas=d.pcas;
+  if(d.adj) adj=d.adj;
+  if(d.resUnits) resUnits=d.resUnits;
+  if(d.crpConfig) crpConfig=d.crpConfig;
+  if(d.overriddenPCA) overriddenPCA=d.overriddenPCA;
+  if(d.overriddenRemaining) overriddenRemaining=d.overriddenRemaining;
+  if(d.manualGrid) manualGrid=d.manualGrid;
+  if(d.bedRemarks) bedRemarks=d.bedRemarks;
+  document.getElementById('bottom-remarks').value = d.bottomRemarks || '';
+}
+
+async function saveData(){
+  const record = buildRecord();
+  const dateKey = currentDate;
+
+  // 1. Always save to localStorage (instant, offline-safe)
+  try {
+    localStorage.setItem(LS_PREFIX + dateKey, JSON.stringify(record));
+    addToIndexCache(dateKey);
+  } catch(e) { console.log('localStorage save error', e); }
+
+  // 2. Save to Firestore (async, cloud)
+  setConnStatus('syncing');
+  try {
+    await db.collection('records').doc(dateKey).set(record);
+    setConnStatus('saved');
+    showSaveIndicator('☁️ 已同步');
+  } catch(e) {
+    console.log('Firestore save error', e);
+    setConnStatus('offline');
+    showSaveIndicator('💾 本地已存');
+  }
+
+  updateDateStatus();
+  renderMiniCal();
+}
+
+function showSaveIndicator(text){
+  const ind = document.getElementById('save-ind');
+  ind.textContent = text;
+  ind.style.opacity = '1';
+  ind.style.color = text.includes('雲') ? '#34d399' : '#fbbf24';
+  setTimeout(() => { ind.style.opacity = '0'; }, 1800);
+}
+
+async function loadDate(ds){
+  // Try Firestore first
+  try {
+    const doc = await db.collection('records').doc(ds).get();
+    if (doc.exists) {
+      const d = doc.data();
+      applyRecord(d);
+      // Also cache to localStorage
+      localStorage.setItem(LS_PREFIX + ds, JSON.stringify(d));
+      addToIndexCache(ds);
+      return true;
+    }
+  } catch(e) { console.log('Firestore load failed, trying local', e); }
+
+  // Fallback: localStorage
+  try {
+    const raw = localStorage.getItem(LS_PREFIX + ds);
+    if (raw) {
+      applyRecord(JSON.parse(raw));
+      return true;
+    }
+  } catch(e) {}
+
+  return false;
+}
+
+async function loadRawDate(ds){
+  // Try Firestore first
+  try {
+    const doc = await db.collection('records').doc(ds).get();
+    if (doc.exists) return doc.data();
+  } catch(e) {}
+  // Fallback
+  try {
+    const raw = localStorage.getItem(LS_PREFIX + ds);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+function schedSave(){ clearTimeout(saveTimer); saveTimer = setTimeout(saveData, 800) }
+
+// ==================== DATE NAVIGATION ====================
+function setCurrentDate(ds){
+  currentDate = ds;
+  document.getElementById('date-input').value = ds;
+  document.getElementById('date-display').textContent = fmtDateDisplay(ds);
+  calViewMonth = getMonthStr(ds);
+  updateDateStatus();
+  renderMiniCal();
+}
+function updateDateStatus(){
+  const badge = document.getElementById('date-status');
+  if(hasRecord(currentDate)){ badge.textContent='已有紀錄'; badge.className='date-badge has-data' }
+  else{ badge.textContent='新紀錄'; badge.className='date-badge no-data' }
+}
+
+async function goToDate(ds){
+  if(!ds) return;
+  // Save current
+  await saveData();
+  setCurrentDate(ds);
+  initDefaults();
+  const loaded = await loadDate(ds);
+  syncAdjInputs();
+  if(!loaded || Object.keys(manualGrid).length===0) runAllocation();
+  renderAll();
+  // Refresh month index for calendar
+  refreshMonthIndex(getMonthStr(ds)).then(() => renderMiniCal());
+}
+function changeDate(delta){ goToDate(addDays(currentDate, delta)) }
+function goToToday(){ goToDate(todayStr()) }
+
+// ==================== MINI CALENDAR ====================
+function renderMiniCal(){
+  const ym = calViewMonth || getMonthStr(currentDate);
+  const[y,m] = ym.split('-').map(Number);
+  document.getElementById('cal-month-label').textContent = `${y}年${m}月`;
+  const days = daysInMonth(ym);
+  const today = todayStr();
+  let html = '';
+  for(let d=1; d<=days; d++){
+    const ds = `${ym}-${String(d).padStart(2,'0')}`;
+    const has = dateIndexCache.includes(ds);
+    const isToday = ds === today;
+    const isSel = ds === currentDate;
+    let cls = 'day-dot '+(has?'has':'empty')+(isToday?' today':'')+(isSel?' selected':'');
+    html += `<div class="${cls}" onclick="goToDate('${ds}')" title="${ds}">${d}</div>`;
+  }
+  document.getElementById('mini-cal').innerHTML = html;
+}
+function calMonth(delta){
+  const[y,m] = calViewMonth.split('-').map(Number);
+  const nd = new Date(y,m-1+delta,1);
+  calViewMonth = `${nd.getFullYear()}-${String(nd.getMonth()+1).padStart(2,'0')}`;
+  refreshMonthIndex(calViewMonth).then(() => renderMiniCal());
+}
+
+// ==================== COPY RECORD ====================
+function showCopyModal(){
+  document.getElementById('copy-modal').classList.add('show');
+  document.getElementById('copy-source-date').value = addDays(currentDate,-1);
+  checkCopySource();
+  document.getElementById('copy-source-date').onchange = checkCopySource;
+}
+function closeCopyModal(){ document.getElementById('copy-modal').classList.remove('show') }
+function checkCopySource(){
+  const ds = document.getElementById('copy-source-date').value;
+  const info = document.getElementById('copy-source-info');
+  if(hasRecord(ds)){ info.innerHTML='<span style="color:var(--green-dark)">✓ 該日期有紀錄</span>' }
+  else{ info.innerHTML='<span style="color:var(--red-dark)">✗ 該日期沒有紀錄，將使用預設值</span>' }
+}
+async function doCopy(){
+  const src = document.getElementById('copy-source-date').value;
+  if(!src){ alert('請選擇來源日期'); return }
+  if(!confirm(`確認將 ${fmtDateDisplay(src)} 的紀錄複製到 ${fmtDateDisplay(currentDate)}？\n目前日期的紀錄將被覆蓋。`)) return;
+  initDefaults();
+  const loaded = await loadRawDate(src);
+  if(loaded) applyRecord(loaded);
+  syncAdjInputs();
+  renderAll();
+  await saveData();
+  closeCopyModal();
+}
+
+// ==================== DELETE RECORD ====================
+async function deleteCurrentRecord(){
+  if(!hasRecord(currentDate)){ alert('當日沒有紀錄可刪除'); return }
+  if(!confirm(`確認刪除 ${fmtDateDisplay(currentDate)} 的紀錄？此操作無法復原。`)) return;
+  // Delete from Firestore
+  try { await db.collection('records').doc(currentDate).delete(); } catch(e) { console.log('Firestore delete error', e); }
+  // Delete from localStorage
+  localStorage.removeItem(LS_PREFIX + currentDate);
+  removeFromIndexCache(currentDate);
+  initDefaults();
+  syncAdjInputs();
+  runAllocation();
+  renderAll();
+  updateDateStatus();
+  renderMiniCal();
+}
+
+// ==================== EXCEL EXPORT ====================
+async function exportMonthExcel(){
+  const ym = getMonthStr(currentDate);
+  const[year,month] = ym.split('-').map(Number);
+
+  // Get all dates in this month from Firestore
+  setConnStatus('syncing');
+  let monthDates = [];
+  try {
+    const startDate = ym + '-01';
+    const endDate = ym + '-31';
+    const snap = await db.collection('records')
+      .where(firebase.firestore.FieldPath.documentId(), '>=', startDate)
+      .where(firebase.firestore.FieldPath.documentId(), '<=', endDate + '\uf8ff')
+      .get();
+    snap.forEach(doc => monthDates.push({ date: doc.id, data: doc.data() }));
+    setConnStatus('online');
+  } catch(e) {
+    console.log('Firestore export failed, using local', e);
+    setConnStatus('offline');
+    // Fallback to localStorage
+    const idx = dateIndexCache.filter(d => d.startsWith(ym));
+    idx.forEach(ds => {
+      try {
+        const raw = localStorage.getItem(LS_PREFIX + ds);
+        if(raw) monthDates.push({ date: ds, data: JSON.parse(raw) });
+      } catch(e2) {}
+    });
+  }
+
+  monthDates.sort((a,b) => a.date.localeCompare(b.date));
+  if(monthDates.length === 0){ alert(`${year}年${month}月沒有任何紀錄`); return }
+
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1: Monthly Summary
+  const summaryData = [['日期','星期','病床總數','治療師總單位','人均病床','PCA總單位','備注']];
+  monthDates.forEach(({ date: ds, data: rec }) => {
+    const d = new Date(ds+'T00:00:00');
+    const wd = '星期'+WEEKDAYS[d.getDay()];
+    const totalBeds = (rec.teams||[]).reduce((s,t) => s+(Number(t.beds)||0), 0);
+    const totalTU = (rec.teams||[]).reduce((s,t) => s+(Number(t.therapistUnits)||0), 0);
+    const avg = totalTU>0 ? (totalBeds/totalTU) : 0;
+    const a = rec.adj || {};
+    const pcaU = (rec.pcas||[]).length-(Number(a.robotics)||0)-(Number(a.crp)||0)-(Number(a.dro)||0)-(Number(a.slvl)||0)+(Number(a.buffer)||0);
+    summaryData.push([ds, wd, totalBeds, totalTU.toFixed(2), avg.toFixed(2), pcaU.toFixed(2), rec.bottomRemarks||'']);
+  });
+  const ws1 = XLSX.utils.aoa_to_sheet(summaryData);
+  ws1['!cols'] = [{wch:12},{wch:8},{wch:10},{wch:12},{wch:10},{wch:10},{wch:30}];
+  XLSX.utils.book_append_sheet(wb, ws1, '月份總覽');
+
+  // Sheet per day
+  monthDates.forEach(({ date: ds, data: rec }) => {
+    const t = rec.teams || [];
+    const data = [];
+    data.push(['=== Team 設定 ===']);
+    data.push(['項目', ...t.map(x => x.name)]);
+    data.push(['治療師', ...t.map(x => x.therapist||'')]);
+    data.push(['治療師當值單位', ...t.map(x => x.therapistUnits)]);
+    data.push(['病床數目', ...t.map(x => x.beds)]);
+    data.push(['Remarks', ...t.map(x => x.remarks||'')]);
+    data.push([]);
+    data.push(['=== PCA 分配 ===']);
+    const grid = rec.manualGrid || {};
+    data.push(['時段', ...t.map(x => x.name)]);
+    TIME_SLOTS.forEach((slot,si) => {
+      const row = [slot];
+      t.forEach(tm => {
+        const key = `${tm.id}-${si}`;
+        const chips = grid[key] || [];
+        row.push(chips.map(c => c.pcaName).join(', '));
+      });
+      data.push(row);
+    });
+    data.push([]);
+    data.push(['=== 病床分配 ===']);
+    const totalBeds = t.reduce((s,x) => s+(Number(x.beds)||0), 0);
+    const totalTU = t.reduce((s,x) => s+(Number(x.therapistUnits)||0), 0);
+    const avg = totalTU>0 ? totalBeds/totalTU : 0;
+    data.push(['項目', ...t.map(x => x.name)]);
+    data.push(['應負責病床', ...t.map(x => (avg*Number(x.therapistUnits)).toFixed(1))]);
+    data.push(['目前病床', ...t.map(x => x.beds)]);
+    data.push(['差額', ...t.map(x => ((avg*Number(x.therapistUnits))-Number(x.beds)).toFixed(1))]);
+    data.push([]);
+    if(rec.bottomRemarks) data.push(['備注:', rec.bottomRemarks]);
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws['!cols'] = [{wch:14}, ...t.map(() => ({wch:16}))];
+    XLSX.utils.book_append_sheet(wb, ws, ds.slice(5));
+  });
+
+  XLSX.writeFile(wb, `PCA分配_${year}年${month}月.xlsx`);
+}
+
+// ==================== SYNC ADJ INPUTS ====================
+function syncAdjInputs(){
+  document.getElementById('adj-robotics').value = adj.robotics;
+  document.getElementById('adj-crp').value = adj.crp;
+  document.getElementById('adj-dro').value = adj.dro;
+  document.getElementById('adj-slvl').value = adj.slvl;
+  document.getElementById('adj-buffer').value = adj.buffer;
+}
+
+// ==================== CALCULATIONS ====================
+function calcTotalBeds(){ return teams.reduce((s,t) => s+(Number(t.beds)||0), 0) }
+function calcTotalTherapistUnits(){ return teams.reduce((s,t) => s+(Number(t.therapistUnits)||0), 0) }
+function calcAvgBeds(){ const tu=calcTotalTherapistUnits(); return tu>0 ? calcTotalBeds()/tu : 0 }
+function calcPCATotalUnits(){ return pcas.length-(Number(adj.robotics)||0)-(Number(adj.crp)||0)-(Number(adj.dro)||0)-(Number(adj.slvl)||0)+(Number(adj.buffer)||0) }
+function calcTeamPCAUnits(){
+  const total=calcPCATotalUnits(), tu=calcTotalTherapistUnits();
+  return teams.map((t,i) => {
+    if(overriddenPCA[t.id]!==undefined) return Number(overriddenPCA[t.id]);
+    return tu===0 ? 0 : (Number(t.therapistUnits)||0)*total/tu;
+  });
+}
+function calcTeamRemaining(){
+  const tpu=calcTeamPCAUnits();
+  return teams.map((t,i) => {
+    if(overriddenRemaining[t.id]!==undefined) return Number(overriddenRemaining[t.id]);
+    return Math.max(0, tpu[i]-(resUnits[i]?resUnits[i].units:1));
+  });
+}
+function calcGivenUnits(){
+  return teams.map(t => {
+    let total=0;
+    for(let si=0;si<4;si++){
+      const key=`${t.id}-${si}`;
+      const chips=manualGrid[key]||[];
+      total+=chips.filter(c=>!c.isResident).length*SLOT_UNIT;
+    }
+    return total;
+  });
+}
+function getUnassignedSlots(){
+  const assigned={};
+  teams.forEach(t=>{
+    for(let si=0;si<4;si++){
+      const key=`${t.id}-${si}`;
+      (manualGrid[key]||[]).forEach(c=>{
+        if(!c.isResident){ if(!assigned[c.pcaId])assigned[c.pcaId]=new Set(); assigned[c.pcaId].add(si); }
+      });
+    }
+  });
+  const result=[];
+  pcas.filter(p=>!p.isResident).forEach(pca=>{
+    pca.slots.forEach((avail,si)=>{
+      if(avail&&(!assigned[pca.id]||!assigned[pca.id].has(si)))
+        result.push({pcaId:pca.id,pcaName:pca.name,slot:si});
+    });
+  });
+  return result;
+}
+
+// ==================== ALLOCATION ALGORITHM ====================
+function runAllocation(){
+  const nonRes=pcas.filter(p=>!p.isResident);
+  const numT=teams.length;
+  const tpu=calcTeamPCAUnits();
+  const remaining=teams.map((t,i)=>{
+    if(overriddenRemaining[t.id]!==undefined)return Number(overriddenRemaining[t.id]);
+    return Math.max(0,tpu[i]-(resUnits[i]?resUnits[i].units:1));
+  });
+  const assignable=[];
+  nonRes.forEach(pca=>{pca.slots.forEach((av,si)=>{if(av)assignable.push({pcaId:pca.id,pcaName:pca.name,slot:si})})});
+  const totalSlots=assignable.length;
+  const totalRem=remaining.reduce((a,b)=>a+b,0);
+  let targetSlots=teams.map((_,i)=>totalRem===0?totalSlots/numT:(remaining[i]/totalRem)*totalSlots);
+  let rounded=targetSlots.map(s=>Math.round(s));
+  let diff=totalSlots-rounded.reduce((a,b)=>a+b,0);
+  const byFrac=teams.map((_,i)=>({i,frac:targetSlots[i]-Math.floor(targetSlots[i])})).sort((a,b)=>b.frac-a.frac);
+  let idx=0;
+  while(diff>0){rounded[byFrac[idx%numT].i]++;diff--;idx++}
+  while(diff<0){rounded[byFrac[(byFrac.length-1-(idx%numT))].i]--;diff++;idx++}
+  const teamSlotsGiven=teams.map(()=>[0,0,0,0]);
+  const teamTotalGiven=teams.map(()=>0);
+  const pcaMap={};
+  nonRes.forEach(p=>{pcaMap[p.id]=[-1,-1,-1,-1]});
+  const sorted=[...nonRes].sort((a,b)=>a.slots.filter(Boolean).length-b.slots.filter(Boolean).length);
+  sorted.forEach(pca=>{
+    const avail=pca.slots.map((v,i)=>v?i:-1).filter(s=>s>=0);
+    const pairs=[];
+    if(avail.includes(0)&&avail.includes(1))pairs.push([0,1]);
+    if(avail.includes(2)&&avail.includes(3))pairs.push([2,3]);
+    const done=new Set();
+    pairs.forEach(pair=>{
+      if(pair.every(s=>done.has(s)))return;
+      const scores=teams.map((_,ti)=>({ti,need:rounded[ti]-teamTotalGiven[ti],rem:remaining[ti]-teamTotalGiven[ti]*SLOT_UNIT})).sort((a,b)=>b.need-a.need||b.rem-a.rem);
+      for(const{ti}of scores){
+        if(rounded[ti]-teamTotalGiven[ti]>=2){
+          pair.forEach(s=>{if(!done.has(s)){pcaMap[pca.id][s]=ti;teamSlotsGiven[ti][s]++;teamTotalGiven[ti]++;done.add(s)}});break;
+        }
+      }
+    });
+    avail.forEach(s=>{
+      if(done.has(s))return;
+      const scores=teams.map((_,ti)=>({ti,need:rounded[ti]-teamTotalGiven[ti],rem:remaining[ti]-teamTotalGiven[ti]*SLOT_UNIT})).sort((a,b)=>b.need-a.need||b.rem-a.rem);
+      for(const{ti}of scores){
+        if(rounded[ti]-teamTotalGiven[ti]>0){pcaMap[pca.id][s]=ti;teamSlotsGiven[ti][s]++;teamTotalGiven[ti]++;done.add(s);break}
+      }
+      if(!done.has(s)){
+        const scores2=teams.map((_,ti)=>({ti,rem:remaining[ti]-teamTotalGiven[ti]*SLOT_UNIT})).sort((a,b)=>b.rem-a.rem);
+        const ti=scores2[0].ti;pcaMap[pca.id][s]=ti;teamSlotsGiven[ti][s]++;teamTotalGiven[ti]++;done.add(s);
+      }
+    });
+  });
+  // Swap phase
+  for(let round=0;round<50;round++){
+    let swapped=false;
+    teams.forEach((team,ti)=>{
+      [team.pref1,team.pref2].forEach(pref=>{
+        pref.forEach((wanted,si)=>{
+          if(!wanted||teamSlotsGiven[ti][si]>0)return;
+          for(let oti=0;oti<numT;oti++){
+            if(oti===ti||teamSlotsGiven[oti][si]<=0)continue;
+            const pcaSwap=Object.entries(pcaMap).find(([pid,slots])=>slots[si]===oti);
+            if(!pcaSwap)continue;
+            for(let swSi=0;swSi<4;swSi++){
+              if(swSi===si||teamSlotsGiven[ti][swSi]<=0)continue;
+              if(team.pref1[swSi]||team.pref2[swSi])continue;
+              const pcaFrom=Object.entries(pcaMap).find(([pid,slots])=>slots[swSi]===ti);
+              if(!pcaFrom)continue;
+              const p1=nonRes.find(p=>p.id===pcaSwap[0]),p2=nonRes.find(p=>p.id===pcaFrom[0]);
+              if(!p1||!p1.slots[swSi]||!p2||!p2.slots[si])continue;
+              pcaMap[pcaSwap[0]][si]=ti;pcaMap[pcaFrom[0]][swSi]=oti;
+              teamSlotsGiven[ti][si]++;teamSlotsGiven[oti][si]--;
+              teamSlotsGiven[ti][swSi]--;teamSlotsGiven[oti][swSi]++;
+              swapped=true;return;
+            }
+          }
+        });
+      });
+    });
+    if(!swapped)break;
+  }
+  manualGrid={};
+  Object.entries(pcaMap).forEach(([pcaId,slots])=>{
+    const pca=pcas.find(p=>p.id===pcaId);
+    slots.forEach((ti,si)=>{
+      if(ti>=0&&ti<numT){const key=`${teams[ti].id}-${si}`;if(!manualGrid[key])manualGrid[key]=[];manualGrid[key].push({pcaId,pcaName:pca?pca.name:pcaId,isResident:false})}
+    });
+  });
+  pcas.filter(p=>p.isResident&&p.residentTeam).forEach(pca=>{
+    const ti=teams.findIndex(t=>t.id===pca.residentTeam);
+    if(ti<0)return;const ru=resUnits[ti];
+    pca.slots.forEach((av,si)=>{
+      if(av&&ru&&ru.slots[si]){const key=`${teams[ti].id}-${si}`;if(!manualGrid[key])manualGrid[key]=[];manualGrid[key].push({pcaId:pca.id,pcaName:pca.name,isResident:true})}
+    });
+  });
+}
+function doAllocate(){runAllocation();renderAll();schedSave()}
+function resetRemainingOverrides(){overriddenRemaining={};renderAll();schedSave()}
+
+// ==================== CRUD ====================
+function addTeam(){
+  teams.push({id:`team-${Date.now()}`,name:`Team ${teams.length+1}`,therapist:"",therapistUnits:1,beds:10,
+    pref1:[false,false,false,false],pref2:[false,false,false,false],remarks:""});
+  while(resUnits.length<teams.length)resUnits.push({units:1,slots:[true,true,true,true]});
+  renderAll();schedSave();
+}
+function removeTeam(idx){if(teams.length<=1)return;teams.splice(idx,1);resUnits.splice(idx,1);renderAll();schedSave()}
+function addPCA(){pcas.push({id:`pca-${Date.now()}`,name:`PCA ${pcas.length+1}`,slots:[true,true,true,true],isResident:false,residentTeam:"",remarks:""});renderAll();schedSave()}
+function removePCA(idx){if(pcas.length<=1)return;pcas.splice(idx,1);renderAll();schedSave()}
+
+// ==================== DRAG & DROP ====================
+function dragStart(e,pcaId,pcaName,fromKey,isResident,slotIdx){
+  draggingData={pcaId,pcaName,fromKey,isResident,slotIdx};e.dataTransfer.effectAllowed='move';e.target.classList.add('dragging');
+}
+function dragEnd(e){e.target.classList.remove('dragging');draggingData=null}
+function dropToCell(e,toKey){
+  e.preventDefault();if(!draggingData)return;
+  const{pcaId,pcaName,fromKey,isResident}=draggingData;
+  if(fromKey&&fromKey!=='pool'&&manualGrid[fromKey])manualGrid[fromKey]=manualGrid[fromKey].filter(c=>c.pcaId!==pcaId);
+  if(!manualGrid[toKey])manualGrid[toKey]=[];
+  manualGrid[toKey].push({pcaId,pcaName,isResident:isResident||false});
+  draggingData=null;renderTable4();renderTable3();schedSave();
+}
+function dropToPool(e){
+  e.preventDefault();if(!draggingData)return;
+  const{pcaId,fromKey,isResident}=draggingData;
+  if(isResident){draggingData=null;return}
+  if(fromKey&&fromKey!=='pool'&&manualGrid[fromKey])manualGrid[fromKey]=manualGrid[fromKey].filter(c=>c.pcaId!==pcaId);
+  draggingData=null;renderTable4();renderTable3();schedSave();
+}
+function addManualPCA(key){
+  const inp=document.getElementById('mi-'+key);
+  if(!inp||!inp.value.trim())return;
+  if(!manualGrid[key])manualGrid[key]=[];
+  manualGrid[key].push({pcaId:`manual-${Date.now()}`,pcaName:inp.value.trim(),isResident:false});
+  inp.value='';renderTable4();renderTable3();schedSave();
+}
+
+// ==================== HELPERS ====================
+function slotCBs(values,onChange,prefix){
+  return TIME_SLOTS.map((sl,i)=>{
+    const checked=values[i]?'checked':'';
+    return `<label><input type="checkbox" ${checked} onchange="${onChange}(${i},this.checked,'${prefix}')">${sl.split('-')[0]}</label>`;
+  }).join('');
+}
+function chipHTML(pcaName,pcaId,fromKey,isResident,slotIdx,small){
+  const cls=`chip ${isResident?'resident':'non-resident'}${small?' small':''}`;
+  return `<span class="${cls}" draggable="true" ondragstart="dragStart(event,'${pcaId}','${escH(pcaName)}','${fromKey}',${isResident},${slotIdx})" ondragend="dragEnd(event)">${escH(pcaName)}</span>`;
+}
+function escH(s){return String(s).replace(/'/g,'&#39;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}
+function teamSelect(cur,pcaIdx){
+  let html=`<select onchange="pcas[${pcaIdx}].residentTeam=this.value;schedSave()"><option value="">-- 選擇 --</option>`;
+  teams.forEach(t=>{html+=`<option value="${t.id}"${cur===t.id?' selected':''}>${escH(t.name)}</option>`});
+  return html+'</select>';
+}
+
+// ==================== RENDER TABLE 1 ====================
+function renderTable1(){
+  let h='<th style="min-width:110px">操作</th>';
+  teams.forEach((t,i)=>{h+=`<th style="min-width:120px"><input class="header-input" value="${escH(t.name)}" onchange="teams[${i}].name=this.value;syncNames();schedSave()"></th>`});
+  document.getElementById('t1-header').innerHTML=h;
+  const rows=[
+    {label:'治療師名字',render:(t,i)=>`<input type="text" value="${escH(t.therapist)}" onchange="teams[${i}].therapist=this.value;schedSave()" placeholder="名字">`},
+    {label:'治療師當值單位',render:(t,i)=>`<input type="number" step="0.1" value="${t.therapistUnits}" onchange="teams[${i}].therapistUnits=parseFloat(this.value)||0;renderAll();schedSave()">`},
+    {label:'病床數目',render:(t,i)=>`<input type="number" value="${t.beds}" onchange="teams[${i}].beds=parseInt(this.value)||0;renderAll();schedSave()">`},
+    {label:'第一優先PCA時段',render:(t,i)=>`<div class="slot-cb-group">${slotCBs(t.pref1,'t1Pref1','p1-'+i)}</div>`},
+    {label:'第二優先PCA時段',render:(t,i)=>`<div class="slot-cb-group">${slotCBs(t.pref2,'t1Pref2','p2-'+i)}</div>`},
+    {label:'Remarks',render:(t,i)=>`<input type="text" value="${escH(t.remarks)}" onchange="teams[${i}].remarks=this.value;schedSave()" placeholder="備注">`},
+    {label:'',render:(t,i)=>`<button class="btn btn-danger btn-sm" onclick="removeTeam(${i})">刪除</button>`}
+  ];
+  let b='';
+  rows.forEach(r=>{b+=`<tr><td style="font-weight:600;font-size:10px;white-space:nowrap">${r.label}</td>`;teams.forEach((t,i)=>{b+=`<td>${r.render(t,i)}</td>`});b+='</tr>'});
+  document.getElementById('t1-body').innerHTML=b;
+  document.getElementById('stat-total-beds').textContent='病床總數: '+calcTotalBeds();
+  document.getElementById('stat-total-units').textContent='治療師總當值單位: '+calcTotalTherapistUnits().toFixed(2);
+  document.getElementById('stat-avg-beds').textContent='人均病床數量: '+calcAvgBeds().toFixed(2);
+}
+window.t1Pref1=function(si,val,prefix){const idx=parseInt(prefix.split('-')[1]);teams[idx].pref1[si]=val;schedSave()};
+window.t1Pref2=function(si,val,prefix){const idx=parseInt(prefix.split('-')[1]);teams[idx].pref2[si]=val;schedSave()};
+
+// ==================== RENDER TABLE 2 ====================
+function renderTable2(){
+  let html='';
+  pcas.forEach((p,i)=>{
+    const rowCls=p.isResident?'pca-row-resident':'pca-row-nonresident';
+    html+=`<tr class="${rowCls}"><td>${i+1}</td>
+      <td><input type="text" value="${escH(p.name)}" style="width:100px" onchange="pcas[${i}].name=this.value;syncNames();schedSave()"></td>
+      <td><div class="slot-cb-group">${slotCBs(p.slots,'t2Slot','ps-'+i)}</div></td>
+      <td><select onchange="pcas[${i}].isResident=(this.value==='resident');renderAll();schedSave()">
+        <option value="resident"${p.isResident?' selected':''}>常駐</option>
+        <option value="non-resident"${!p.isResident?' selected':''}>非常駐</option></select></td>
+      <td>${p.isResident?teamSelect(p.residentTeam,i):'<span style="font-size:10px;color:var(--slate-light)">N/A</span>'}</td>
+      <td><input type="text" value="${escH(p.remarks)}" style="width:100px" onchange="pcas[${i}].remarks=this.value;schedSave()" placeholder="備注"></td>
+      <td><button class="btn btn-danger btn-sm" onclick="removePCA(${i})">刪</button></td></tr>`;
+  });
+  document.getElementById('t2-body').innerHTML=html;
+  document.getElementById('stat-pca-count').textContent='PCA 人數: '+pcas.length;
+  const pu=calcPCATotalUnits();
+  document.getElementById('stat-pca-units').textContent='PCA 總當值單位: '+pu.toFixed(2);
+  document.getElementById('adj-formula').textContent=`PCA總當值單位 = ${pcas.length} − Robotics(${adj.robotics}) − CRP(${adj.crp}) − DRO(${adj.dro}) − SL&VL(${adj.slvl}) + Buffer(${adj.buffer}) = ${pu.toFixed(2)}`;
+  const tpu=calcTeamPCAUnits();
+  let tpuHtml='';
+  teams.forEach((t,i)=>{
+    const val=overriddenPCA[t.id]!==undefined?overriddenPCA[t.id]:tpu[i].toFixed(2);
+    tpuHtml+=`<div class="team-pca-item"><b>${escH(t.name)}:</b><input class="sm-num" type="number" step="0.01" value="${val}" onchange="overriddenPCA['${t.id}']=parseFloat(this.value)||0;renderAll();schedSave()"></div>`;
+  });
+  tpuHtml+=`<button class="btn btn-success btn-sm" onclick="overriddenPCA={};renderAll();schedSave()">🔄 重新計算</button>`;
+  document.getElementById('team-pca-row').innerHTML=tpuHtml;
+}
+window.t2Slot=function(si,val,prefix){const idx=parseInt(prefix.split('-')[1]);pcas[idx].slots[si]=val;schedSave()};
+
+// ==================== RENDER TABLE 3 ====================
+function renderTable3(){
+  const tpu=calcTeamPCAUnits(),rem=calcTeamRemaining(),given=calcGivenUnits();
+  let hdr='<th>項目</th>';teams.forEach(t=>{hdr+=`<th>${escH(t.name)}</th>`});
+  document.getElementById('t3-header').innerHTML=hdr;
+  let b='';
+  b+='<tr><td style="font-weight:600;font-size:10px">所得 PCA 總單位</td>';teams.forEach((t,i)=>{b+=`<td>${tpu[i].toFixed(2)}</td>`});b+='</tr>';
+  b+='<tr><td style="font-weight:600;font-size:10px">常駐 PCA 當值單位</td>';
+  teams.forEach((t,i)=>{b+=`<td><input class="sm-num" type="number" step="0.25" value="${resUnits[i]?resUnits[i].units:1}" onchange="resUnits[${i}].units=parseFloat(this.value)||0;renderAll();schedSave()"></td>`});b+='</tr>';
+  b+='<tr><td style="font-weight:600;font-size:10px">常駐 PCA 時段</td>';
+  teams.forEach((t,i)=>{const sl=resUnits[i]?resUnits[i].slots:[true,true,true,true];b+=`<td><div class="slot-cb-group">${slotCBs(sl,'t3Slot','rs-'+i)}</div></td>`});b+='</tr>';
+  b+='<tr style="background:var(--amber-bg)"><td style="font-weight:700;font-size:10px">剩餘 PCA 當值單位</td>';
+  teams.forEach((t,i)=>{const v=overriddenRemaining[t.id]!==undefined?overriddenRemaining[t.id]:rem[i].toFixed(2);b+=`<td><input class="sm-num" type="number" step="0.01" value="${v}" style="font-weight:700;background:var(--amber-bg)" onchange="overriddenRemaining['${t.id}']=parseFloat(this.value)||0;renderAll();schedSave()"></td>`});b+='</tr>';
+  b+='<tr><td style="font-weight:600;font-size:10px">已分配非常駐 PCA 單位</td>';teams.forEach((t,i)=>{b+=`<td style="color:var(--green-dark);font-weight:600">${given[i].toFixed(2)}</td>`});b+='</tr>';
+  b+='<tr style="background:var(--green-bg)"><td style="font-weight:700;font-size:10px">淨剩餘</td>';
+  teams.forEach((t,i)=>{const net=rem[i]-given[i];b+=`<td style="font-weight:700;color:${net>0.1?'var(--red-dark)':'var(--green-dark)'}">${net.toFixed(2)}</td>`});b+='</tr>';
+  document.getElementById('t3-body').innerHTML=b;
+  let crpOpts='';teams.forEach(t=>{crpOpts+=`<option value="${t.id}"${crpConfig.team===t.id?' selected':''}>${escH(t.name)}</option>`});
+  document.getElementById('crp-team').innerHTML=crpOpts;document.getElementById('crp-slot').value=crpConfig.slot;
+  let nrHtml='';
+  pcas.filter(p=>!p.isResident).forEach(pca=>{const pi=pcas.indexOf(pca);nrHtml+=`<div class="nr-pca-card"><b>${escH(pca.name)}:</b><div class="slot-cb-group">${slotCBs(pca.slots,'t2Slot','ps-'+pi)}</div></div>`});
+  document.getElementById('nr-pca-list').innerHTML=nrHtml;
+}
+window.t3Slot=function(si,val,prefix){const idx=parseInt(prefix.split('-')[1]);resUnits[idx].slots[si]=val;schedSave()};
+window.onCRPChange=function(){crpConfig.team=document.getElementById('crp-team').value;crpConfig.slot=parseInt(document.getElementById('crp-slot').value);schedSave()};
+window.onAdjChange=function(){
+  adj.robotics=parseFloat(document.getElementById('adj-robotics').value)||0;adj.crp=parseFloat(document.getElementById('adj-crp').value)||0;
+  adj.dro=parseFloat(document.getElementById('adj-dro').value)||0;adj.slvl=parseFloat(document.getElementById('adj-slvl').value)||0;
+  adj.buffer=parseFloat(document.getElementById('adj-buffer').value)||0;renderAll();schedSave();
+};
+
+// ==================== RENDER TABLE 4 ====================
+function renderTable4(){
+  const given=calcGivenUnits();
+  let hdr='<th style="width:80px">時段</th>';teams.forEach(t=>{hdr+=`<th style="min-width:130px">${escH(t.name)}</th>`});
+  document.getElementById('t4-header').innerHTML=hdr;
+  let b='';
+  TIME_SLOTS.forEach((slot,si)=>{
+    b+=`<tr><td style="font-weight:700;font-size:10px;background:#f8fafc;white-space:nowrap">${slot}</td>`;
+    teams.forEach(t=>{
+      const key=`${t.id}-${si}`;const chips=manualGrid[key]||[];
+      let cc='';chips.forEach(c=>{cc+=chipHTML(c.pcaName,c.pcaId,key,c.isResident,si,true)});
+      if(!chips.length)cc='<span class="placeholder">拖放至此</span>';
+      b+=`<td style="padding:3px;min-width:120px" ondragover="event.preventDefault();this.querySelector('.drop-zone').classList.add('drag-over')" ondragleave="this.querySelector('.drop-zone').classList.remove('drag-over')" ondrop="this.querySelector('.drop-zone').classList.remove('drag-over');dropToCell(event,'${key}')"><div class="drop-zone">${cc}</div><input id="mi-${key}" class="manual-input" placeholder="+PCA" onkeydown="if(event.key==='Enter')addManualPCA('${key}')"></td>`;
+    });b+='</tr>';
+  });
+  b+='<tr style="background:var(--green-bg)"><td style="font-weight:700;font-size:10px">非常駐合計</td>';
+  teams.forEach((t,i)=>{b+=`<td style="font-weight:700;color:var(--green-dark)">${given[i].toFixed(2)} 單位</td>`});b+='</tr>';
+  document.getElementById('t4-body').innerHTML=b;
+  const unassigned=getUnassignedSlots();
+  document.getElementById('pool-title').textContent=`未分配 PCA 時段池 (${unassigned.length} 個時段)`;
+  let poolHtml='';
+  if(!unassigned.length)poolHtml='<span style="font-size:10px;color:var(--slate-light)">全部 PCA 時段已分配 ✓</span>';
+  else unassigned.forEach(u=>{poolHtml+=chipHTML(`${u.pcaName} [${TIME_SLOTS[u.slot]}]`,u.pcaId,'pool',false,u.slot,true)});
+  document.getElementById('pool-chips').innerHTML=poolHtml;
+}
+
+// ==================== RENDER TABLE 5 ====================
+function renderTable5(){
+  const avg=calcAvgBeds();
+  document.getElementById('stat-avg-beds2').textContent='人均病床數量: '+avg.toFixed(2);
+  let hdr='<th>項目</th>';teams.forEach(t=>{hdr+=`<th style="min-width:100px">${escH(t.name)}</th>`});
+  document.getElementById('t5-header').innerHTML=hdr;
+  let b='';
+  b+='<tr><td style="font-weight:600;font-size:10px">治療師當值單位</td>';teams.forEach(t=>{b+=`<td>${Number(t.therapistUnits).toFixed(1)}</td>`});b+='</tr>';
+  b+='<tr><td style="font-weight:600;font-size:10px">目前病床數目</td>';teams.forEach(t=>{b+=`<td>${t.beds}</td>`});b+='</tr>';
+  b+='<tr><td style="font-weight:600;font-size:10px">應負責病床數</td>';teams.forEach(t=>{b+=`<td>${(avg*Number(t.therapistUnits)).toFixed(1)}</td>`});b+='</tr>';
+  b+='<tr style="background:var(--yellow-bg)"><td style="font-weight:700;font-size:10px">差額</td>';
+  teams.forEach(t=>{
+    const diff=(avg*Number(t.therapistUnits))-Number(t.beds);
+    const color=diff>0.5?'var(--green-dark)':diff<-0.5?'var(--red-dark)':'#6b7280';
+    const text=diff>0.5?`+${diff.toFixed(1)} (需額外服務)`:diff<-0.5?`${diff.toFixed(1)} (需散出)`:`${diff.toFixed(1)} (平衡)`;
+    b+=`<td style="font-weight:700;color:${color}">${text}</td>`;
+  });b+='</tr>';
+  b+='<tr><td style="font-weight:600;font-size:10px">Remarks</td>';
+  teams.forEach(t=>{b+=`<td><textarea onchange="bedRemarks['${t.id}']=this.value;schedSave()" placeholder="備注...">${escH(bedRemarks[t.id]||'')}</textarea></td>`});b+='</tr>';
+  document.getElementById('t5-body').innerHTML=b;
+  const overload=[],underload=[];
+  teams.forEach(t=>{const diff=(avg*Number(t.therapistUnits))-Number(t.beds);if(diff>0.5)overload.push({name:t.name,diff:diff.toFixed(1)});if(diff<-0.5)underload.push({name:t.name,diff:Math.abs(diff).toFixed(1)})});
+  let sugHtml='<h3 class="sub-title" style="color:#065f46">病床調配建議</h3>';
+  if(!overload.length&&!underload.length)sugHtml+='<p style="color:var(--green-dark);font-size:11px">✅ 各 Team 工作量大致平衡，無需調配。</p>';
+  else{
+    if(underload.length)sugHtml+=`<p style="font-size:11px"><b style="color:var(--red-dark)">需散出病床：</b>${underload.map(u=>`${u.name} 可散出約 ${u.diff} 張`).join('；')}</p>`;
+    if(overload.length)sugHtml+=`<p style="font-size:11px"><b style="color:var(--green-dark)">可接收額外病床：</b>${overload.map(o=>`${o.name} 可額外服務約 ${o.diff} 張`).join('；')}</p>`;
+  }
+  document.getElementById('bed-suggest').innerHTML=sugHtml;
+}
+
+// ==================== SYNC & RENDER ALL ====================
+function syncNames(){
+  Object.values(manualGrid).forEach(chips=>{chips.forEach(c=>{const pca=pcas.find(p=>p.id===c.pcaId);if(pca)c.pcaName=pca.name})});
+  renderAll();schedSave();
+}
+function renderAll(){
+  while(resUnits.length<teams.length)resUnits.push({units:1,slots:[true,true,true,true]});
+  renderTable1();renderTable2();renderTable3();renderTable4();renderTable5();
+}
+
+// ==================== INIT ====================
+window.addEventListener('DOMContentLoaded', async () => {
+  // Migrate old v2 localStorage data
+  try {
+    const oldData = localStorage.getItem('pca-alloc-v2');
+    if (oldData) {
+      const today = todayStr();
+      // Save to Firestore
+      try { await db.collection('records').doc(today).set(JSON.parse(oldData)); } catch(e) {}
+      localStorage.removeItem('pca-alloc-v2');
+    }
+  } catch(e) {}
+
+  // Also migrate old date-keyed localStorage to Firestore
+  try {
+    const oldIndex = localStorage.getItem('pca-dates-index');
+    if (oldIndex) {
+      const dates = JSON.parse(oldIndex);
+      for (const ds of dates) {
+        const raw = localStorage.getItem(LS_PREFIX + ds);
+        if (raw) {
+          try { await db.collection('records').doc(ds).set(JSON.parse(raw)); } catch(e) {}
+        }
+      }
+      console.log('Migrated', dates.length, 'records to Firestore');
+    }
+  } catch(e) {}
+
+  currentDate = todayStr();
+  calViewMonth = getMonthStr(currentDate);
+  setCurrentDate(currentDate);
+
+  // Load date index
+  await refreshDateIndex();
+  renderMiniCal();
+
+  // Load today's record
+  initDefaults();
+  const loaded = await loadDate(currentDate);
+  syncAdjInputs();
+  if (!loaded || Object.keys(manualGrid).length === 0) runAllocation();
+  renderAll();
+  updateDateStatus();
+
+  // Check Firestore connectivity
+  try {
+    await db.collection('_health').doc('ping').set({ t: Date.now() });
+    firestoreReady = true;
+    setConnStatus('online');
+  } catch(e) {
+    setConnStatus('offline');
+  }
+});
+</script>
+</body>
+</html>
